@@ -64,9 +64,7 @@ void update_cursor(struct swaybar_seat *seat) {
 	if (!pointer || !pointer->cursor_surface) {
 		return;
 	}
-	if (pointer->cursor_theme) {
-		wl_cursor_theme_destroy(pointer->cursor_theme);
-	}
+
 	const char *cursor_theme = getenv("XCURSOR_THEME");
 	unsigned cursor_size = 24;
 	const char *env_cursor_size = getenv("XCURSOR_SIZE");
@@ -79,8 +77,15 @@ void update_cursor(struct swaybar_seat *seat) {
 		}
 	}
 	int scale = pointer->current ? pointer->current->scale : 1;
-	pointer->cursor_theme = wl_cursor_theme_load(
-		cursor_theme, cursor_size * scale, seat->bar->shm);
+	// Only reload theme if scale changed
+	if (pointer->scale != scale) {
+		if (pointer->cursor_theme) {
+			wl_cursor_theme_destroy(pointer->cursor_theme);
+		}
+		pointer->cursor_theme = wl_cursor_theme_load(
+			cursor_theme, cursor_size * scale, seat->bar->shm);
+		pointer->scale = scale;
+	}
 	struct wl_cursor *cursor;
 	cursor = wl_cursor_theme_get_cursor(pointer->cursor_theme, "left_ptr");
 	pointer->cursor_image = cursor->images[0];

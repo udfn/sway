@@ -439,6 +439,7 @@ bool bar_setup(struct swaybar *bar, const char *socket_path) {
 		pointer->cursor_surface =
 			wl_compositor_create_surface(bar->compositor);
 		assert(pointer->cursor_surface);
+		pointer->scale = 0;
 	}
 
 	if (bar->config->status_command) {

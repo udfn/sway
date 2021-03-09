@@ -23,6 +23,7 @@ struct swaybar_pointer {
 	struct wl_surface *cursor_surface;
 	struct swaybar_output *current;
 	double x, y;
+	int scale;
 	uint32_t serial;
 };
 
