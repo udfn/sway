@@ -34,6 +34,7 @@ struct sway_container *container_create(struct sway_view *view) {
 	c->pending.layout = L_NONE;
 	c->view = view;
 	c->alpha = 1.0f;
+	c->always_on_top = false;
 
 	if (!view) {
 		c->pending.children = create_list();
@@ -423,7 +424,8 @@ struct sway_container *container_obstructing_fullscreen_container(struct sway_co
 	struct sway_workspace *workspace = container->pending.workspace;
 
 	if (workspace && workspace->fullscreen && !container_is_fullscreen_or_child(container)) {
-		if (container_is_transient_for(container, workspace->fullscreen)) {
+		if (container_is_transient_for(container, workspace->fullscreen) ||
+				container->always_on_top) {
 			return NULL;
 		}
 		return workspace->fullscreen;
@@ -431,7 +433,8 @@ struct sway_container *container_obstructing_fullscreen_container(struct sway_co
 
 	struct sway_container *fullscreen_global = root->fullscreen_global;
 	if (fullscreen_global && container != fullscreen_global && !container_has_ancestor(container, fullscreen_global)) {
-		if (container_is_transient_for(container, fullscreen_global)) {
+		if (container_is_transient_for(container, fullscreen_global) ||
+				container->always_on_top) {
 			return NULL;
 		}
 		return fullscreen_global;

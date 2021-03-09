@@ -131,14 +131,23 @@ struct sway_node *node_at_coords(
 		return NULL;
 	}
 	if (ws->fullscreen) {
-		// Try transient containers
+		// Try transient containers and those that are always on top
 		for (int i = 0; i < ws->floating->length; ++i) {
 			struct sway_container *floater = ws->floating->items[i];
-			if (container_is_transient_for(floater, ws->fullscreen)) {
-				struct sway_container *con = tiling_container_at(
-						&floater->node, lx, ly, surface, sx, sy);
-				if (con) {
-					return &con->node;
+			if (container_is_transient_for(floater, ws->fullscreen) || floater->always_on_top) {
+				// Ugly copy paste hack so the fullscreen'd container is focusable..
+				struct wlr_box box = {
+					.x = floater->current.x,
+					.y = floater->current.y,
+					.width = floater->current.width,
+					.height = floater->current.height,
+				};
+				if (wlr_box_contains_point(&box, lx, ly)) {
+					struct sway_container *con = tiling_container_at(
+							&floater->node, lx, ly, surface, sx, sy);
+					if (con) {
+						return &con->node;
+					}
 				}
 			}
 		}

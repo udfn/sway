@@ -981,7 +981,7 @@ static void render_floating_container(struct sway_output *soutput,
 }
 
 static void render_floating(struct sway_output *soutput,
-		pixman_region32_t *damage) {
+		pixman_region32_t *damage, bool topmost) {
 	for (int i = 0; i < root->outputs->length; ++i) {
 		struct sway_output *output = root->outputs->items[i];
 		for (int j = 0; j < output->current.workspaces->length; ++j) {
@@ -991,7 +991,8 @@ static void render_floating(struct sway_output *soutput,
 			}
 			for (int k = 0; k < ws->current.floating->length; ++k) {
 				struct sway_container *floater = ws->current.floating->items[k];
-				if (floater->current.fullscreen_mode != FULLSCREEN_NONE) {
+				if (floater->current.fullscreen_mode != FULLSCREEN_NONE ||
+						floater->always_on_top != topmost) {
 					continue;
 				}
 				render_floating_container(soutput, damage, floater);
@@ -1073,7 +1074,8 @@ void output_render(struct sway_output *output, struct timespec *when,
 		for (int i = 0; i < workspace->current.floating->length; ++i) {
 			struct sway_container *floater =
 				workspace->current.floating->items[i];
-			if (container_is_transient_for(floater, fullscreen_con)) {
+			if (container_is_transient_for(floater, fullscreen_con) ||
+					floater->always_on_top) {
 				render_floating_container(output, damage, floater);
 			}
 		}
@@ -1096,7 +1098,8 @@ void output_render(struct sway_output *output, struct timespec *when,
 			&output->layers[ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM]);
 
 		render_workspace(output, damage, workspace, workspace->current.focused);
-		render_floating(output, damage);
+		render_floating(output, damage, false);
+		render_floating(output, damage, true);
 #if HAVE_XWAYLAND
 		render_unmanaged(output, damage, &root->xwayland_unmanaged);
 #endif

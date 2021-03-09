@@ -373,7 +373,8 @@ static void output_for_each_surface(struct sway_output *output,
 			for (int i = 0; i < workspace->current.floating->length; ++i) {
 				struct sway_container *floater =
 					workspace->current.floating->items[i];
-				if (container_is_transient_for(floater, fullscreen_con)) {
+				if (container_is_transient_for(floater, fullscreen_con) ||
+						floater->always_on_top) {
 					for_each_surface_container_iterator(floater, &data);
 				}
 			}
@@ -510,7 +511,8 @@ static bool scan_out_fullscreen_view(struct sway_output *output,
 	for (int i = 0; i < workspace->current.floating->length; ++i) {
 		struct sway_container *floater =
 			workspace->current.floating->items[i];
-		if (container_is_transient_for(floater, view->container)) {
+		if (container_is_transient_for(floater, view->container) ||
+				floater->always_on_top) {
 			return false;
 		}
 	}

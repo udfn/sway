@@ -116,6 +116,9 @@ struct sway_container {
 
 	float alpha;
 
+	// Should this container be rendered on top of fullscreen views if floating?
+	bool always_on_top;
+
 	struct wlr_texture *title_focused;
 	struct wlr_texture *title_focused_inactive;
 	struct wlr_texture *title_unfocused;
