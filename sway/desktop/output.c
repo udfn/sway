@@ -498,7 +498,7 @@ static void count_surface_iterator(struct sway_output *output, struct sway_view 
 
 void set_output_immediate_surface(struct sway_output *output, struct wlr_surface *surface,
 		enum wlr_output_present_mode mode) {
-	if (surface) {
+	if (mode) {
 		output->wlr_output->present_mode = mode;
 		if (output->fullscreen_immediate_surface != surface) {
 			if (output->fullscreen_immediate_surface != NULL) {

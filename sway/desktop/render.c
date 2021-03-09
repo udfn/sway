@@ -1060,10 +1060,8 @@ void output_render(struct sway_output *output, struct timespec *when,
 		}
 
 		if (fullscreen_con->view) {
-			if (fullscreen_con->fullscreen_present_mode) {
-				set_output_immediate_surface(output, fullscreen_con->view->surface,
-					fullscreen_con->fullscreen_present_mode);
-			}
+			set_output_immediate_surface(output, fullscreen_con->view->surface,
+				fullscreen_con->fullscreen_present_mode);
 			if (!wl_list_empty(&fullscreen_con->view->saved_buffers)) {
 				render_saved_view(fullscreen_con->view, output, damage, 1.0f);
 			} else if (fullscreen_con->view->surface) {
