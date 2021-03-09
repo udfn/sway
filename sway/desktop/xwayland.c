@@ -578,11 +578,12 @@ static void handle_request_move(struct wl_listener *listener, void *data) {
 	if (!xsurface->mapped) {
 		return;
 	}
-	if (!container_is_floating(view->container)) {
-		return;
-	}
 	struct sway_seat *seat = input_manager_current_seat();
-	seatop_begin_move_floating(seat, view->container);
+	if (container_is_floating(view->container)) {
+		seatop_begin_move_floating(seat, view->container);
+	} else {
+		seatop_begin_move_tiling(seat, view->container);
+	}
 }
 
 static void handle_request_resize(struct wl_listener *listener, void *data) {
