@@ -1120,6 +1120,9 @@ json_object *ipc_json_describe_bar_config(struct bar_config *bar) {
 	json_object *colors = json_object_new_object();
 	json_object_object_add(colors, "background",
 			json_object_new_string(bar->colors.background));
+	json_object_object_add(colors, "popup_background",
+			json_object_new_string(bar->colors.popup_background));
+
 	json_object_object_add(colors, "statusline",
 			json_object_new_string(bar->colors.statusline));
 	json_object_object_add(colors, "separator",

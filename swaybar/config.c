@@ -52,6 +52,7 @@ struct swaybar_config *init_config(void) {
 
 	/* colors */
 	config->colors.background = 0x000000FF;
+	config->colors.popup_background = 0x000000FF;
 	config->colors.focused_background = 0x000000FF;
 	config->colors.statusline = 0xFFFFFFFF;
 	config->colors.focused_statusline = 0xFFFFFFFF;

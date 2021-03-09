@@ -11,6 +11,11 @@ struct swaybar_config;
 struct swaybar_output;
 #if HAVE_TRAY
 struct swaybar_tray;
+struct dbus_menu_item {
+	char *label;
+	int id;
+	bool separator;
+};
 #endif
 struct swaybar_workspace;
 struct loop;
@@ -30,6 +35,7 @@ struct swaybar {
 	struct wl_compositor *compositor;
 	struct zwlr_layer_shell_v1 *layer_shell;
 	struct zxdg_output_manager_v1 *xdg_output_manager;
+	struct xdg_wm_base *xdg_wm;
 	struct wl_shm *shm;
 
 	struct swaybar_config *config;
@@ -46,6 +52,21 @@ struct swaybar {
 
 #if HAVE_TRAY
 	struct swaybar_tray *tray;
+	struct {
+		struct xdg_popup *popup;
+		struct xdg_surface *xsurface;
+		struct wl_surface *surface;
+		struct swaybar_output *output;
+		struct wl_array *menuitems;
+		struct swaybar_sni *sni;
+
+		struct pool_buffer buffers[2];
+		struct pool_buffer *current_buffer;
+		uint32_t width, height;
+		int item_height;
+		bool configured;
+		struct swaybar_seat *seat;
+	} popup;
 #endif
 
 	bool running;
@@ -94,6 +115,10 @@ void bar_run(struct swaybar *bar);
 void bar_teardown(struct swaybar *bar);
 
 void set_bar_dirty(struct swaybar *bar);
+
+#if HAVE_TRAY
+void set_popup_dirty(struct swaybar *bar);
+#endif
 
 /*
  * Determines whether the bar should be visible and changes it to be so.

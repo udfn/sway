@@ -29,6 +29,7 @@
 #include "pool-buffer.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
 void free_workspaces(struct wl_list *list) {
 	struct swaybar_workspace *ws, *tmp;
@@ -326,6 +327,15 @@ static void add_xdg_output(struct swaybar_output *output) {
 		output);
 }
 
+static void handle_wm_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
+	(void)data;
+	xdg_wm_base_pong(xdg_wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener wm_base_listener = {
+	handle_wm_ping
+};
+
 static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
 	struct swaybar *bar = data;
@@ -367,6 +377,9 @@ static void handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
 		bar->xdg_output_manager = wl_registry_bind(registry, name,
 			&zxdg_output_manager_v1_interface, 2);
+	} else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+		bar->xdg_wm = wl_registry_bind(registry, name, &xdg_wm_base_interface, 2);
+		xdg_wm_base_add_listener(bar->xdg_wm, &wm_base_listener, bar);
 	}
 }
 
@@ -484,6 +497,14 @@ void status_in(int fd, short mask, void *data) {
 		set_bar_dirty(bar);
 	}
 }
+
+#if HAVE_TRAY
+void set_popup_dirty(struct swaybar *bar) {
+	if (bar->popup.surface) {
+		render_popup(bar->popup.output);
+	}
+}
+#endif
 
 void bar_run(struct swaybar *bar) {
 	loop_add_fd(bar->eventloop, wl_display_get_fd(bar->display), POLLIN,

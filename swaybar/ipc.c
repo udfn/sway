@@ -60,6 +60,7 @@ static void ipc_parse_colors(
 		uint32_t *color;
 	} properties[] = {
 		{ "background", &config->colors.background },
+		{ "popup_background", &config->colors.popup_background},
 		{ "statusline", &config->colors.statusline },
 		{ "separator", &config->colors.separator },
 		{ "focused_background", &config->colors.focused_background },

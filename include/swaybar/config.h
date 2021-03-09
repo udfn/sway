@@ -53,6 +53,7 @@ struct swaybar_config {
 
 	struct {
 		uint32_t background;
+		uint32_t popup_background;
 		uint32_t statusline;
 		uint32_t separator;
 

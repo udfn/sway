@@ -119,6 +119,9 @@ struct bar_config *default_bar_config(void) {
 	if (!(bar->colors.background = strndup("#000000ff", 9))) {
 		goto cleanup;
 	}
+	if (!(bar->colors.popup_background = strndup("#000000ff", 9))) {
+		goto cleanup;
+	}
 	if (!(bar->colors.statusline = strndup("#ffffffff", 9))) {
 		goto cleanup;
 	}

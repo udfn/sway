@@ -234,6 +234,7 @@ sway_cmd bar_cmd_workspace_min_width;
 
 sway_cmd bar_colors_cmd_active_workspace;
 sway_cmd bar_colors_cmd_background;
+sway_cmd bar_colors_cmd_popup_background;
 sway_cmd bar_colors_cmd_focused_background;
 sway_cmd bar_colors_cmd_binding_mode;
 sway_cmd bar_colors_cmd_focused_workspace;

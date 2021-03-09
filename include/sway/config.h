@@ -339,6 +339,7 @@ struct bar_config {
 	uint32_t workspace_min_width;
 	struct {
 		char *background;
+		char *popup_background;
 		char *statusline;
 		char *separator;
 		char *focused_background;

@@ -8,6 +8,7 @@
 #include "swaybar/bar.h"
 #include "swaybar/config.h"
 #include "swaybar/input.h"
+#include "swaybar/render.h"
 #include "swaybar/tray/host.h"
 #include "swaybar/tray/icon.h"
 #include "swaybar/tray/item.h"
@@ -17,6 +18,7 @@
 #include "list.h"
 #include "log.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
 // TODO menu
 
@@ -328,8 +330,129 @@ void destroy_sni(struct swaybar_sni *sni) {
 	free(sni);
 }
 
-static void handle_click(struct swaybar_sni *sni, int x, int y,
-		uint32_t button, int delta) {
+void handle_sni_menu_click(struct swaybar_sni *sni, int id) {
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	sd_bus_call_method(sni->tray->bus, sni->service, sni->menu,
+		"com.canonical.dbusmenu", "EventGroup", NULL,NULL, "a(isvu)", 1, id,"clicked","i",0,t.tv_sec);
+}
+
+static char resolve_dbus_menuitem_type(char *typestr) {
+	if (strncmp("separator",typestr,9) == 0) {
+		return 1;
+	}
+	return 0;
+}
+struct dbus_menu_data {
+	struct swaybar_sni *sni;
+	struct swaybar_output *output;
+	struct swaybar_seat *seat;
+};
+
+static void show_dbus_menu(struct wl_array *menuitems, struct dbus_menu_data *dat) {
+	struct swaybar *bar = dat->output->bar;
+	if (bar->popup.surface) {
+		destroy_popup(dat->output->bar);
+	}
+	bar->popup.surface = wl_compositor_create_surface(bar->compositor);
+	bar->popup.xsurface = xdg_wm_base_get_xdg_surface(bar->xdg_wm, bar->popup.surface);
+	bar->popup.menuitems = menuitems;
+	bar->popup.output = dat->output;
+	bar->popup.configured = false;
+	bar->popup.sni = dat->sni;
+	bar->popup.seat = dat->seat;
+	set_popup_dirty(dat->output->bar);
+}
+
+static int sni_menu_layout_callback(sd_bus_message *msg, void *data, sd_bus_error *error) {
+	struct dbus_menu_data *dat = data;
+	struct wl_array *menuitems = malloc(sizeof(struct wl_array));
+	wl_array_init(menuitems);
+	unsigned int someid = 0;
+	sd_bus_message_read_basic(msg, 'u', &someid);
+	// hopefully this works :)
+	if (sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "ia{sv}av") <= 0) {
+		free(dat);
+		return 0;
+	}
+	int idb = 0;
+	if (sd_bus_message_read_basic(msg, 'i', &idb) <= 0) {
+		free(dat);
+		return 0;
+	}
+	// next should be an array a{sv}.. that's just a single item, skip it for now..
+	if (sd_bus_message_skip(msg, "a{sv}") <= 0) {
+		free(dat);
+		return 0;
+	}
+	// next are the menu items, as an array of variants (ia{sv}av)
+	// but first make sure it is so
+	char type;
+	sd_bus_message_peek_type(msg, &type, NULL);
+	if (type != 'a') {
+		free(dat);
+		return 0;
+	}
+	if (sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "v") <= 0) {
+		free(dat);
+		return 0;
+	}
+	int counter = 0;
+	// abandon all hope
+	// there is nothing but pain and suffering
+	while (1) {
+		if (sd_bus_message_enter_container(msg, SD_BUS_TYPE_VARIANT, "(ia{sv}av)") <= 0) {
+			sd_bus_message_exit_container(msg);
+			break;
+		}
+		sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "ia{sv}av");
+		int id = 0;
+		char *label = "<no label>";
+		char type = 0; // 0 = menuitems, 1 = separator
+		sd_bus_message_read(msg, "i", &id);
+		sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "{sv}");
+		// now reading the datas!
+		while (1) {
+			if (sd_bus_message_enter_container(msg, SD_BUS_TYPE_DICT_ENTRY, "sv") <= 0) {
+				break;
+			};
+			char *dicttype;
+			sd_bus_message_read(msg,"s",&dicttype);
+			if (strncmp(dicttype, "label",5) == 0) {
+				sd_bus_message_enter_container(msg, SD_BUS_TYPE_VARIANT, "s");
+				sd_bus_message_read_basic(msg,'s',&label);
+				sd_bus_message_exit_container(msg);
+			} else if (strncmp(dicttype, "type",4) == 0) {
+				sd_bus_message_enter_container(msg, SD_BUS_TYPE_VARIANT, "s");
+				char *strtype;
+				sd_bus_message_read_basic(msg,'s',&strtype);
+				sd_bus_message_exit_container(msg);
+				type = resolve_dbus_menuitem_type(strtype);
+			} else {
+				sd_bus_message_skip(msg, "v");
+			}
+			sd_bus_message_exit_container(msg);
+		}
+		sd_bus_message_exit_container(msg); // the {sv} array
+
+		counter++;
+		sd_bus_message_skip(msg, "av");
+		sd_bus_message_exit_container(msg); // the struct
+		sd_bus_message_exit_container(msg); // the variant
+		struct dbus_menu_item *newitem = wl_array_add(menuitems, sizeof(struct dbus_menu_item));
+		int len = strlen(label)+1;
+		newitem->label = malloc(sizeof(char)*len);
+		newitem->separator = type == 1;
+		newitem->id = id;
+		strncpy(newitem->label,label,len);
+	}
+	show_dbus_menu(menuitems, dat);
+	free(dat);
+	return 0;
+}
+
+static void handle_click(struct swaybar_sni *sni, struct swaybar_seat *seat, int x, int y,
+		uint32_t button, int delta, struct swaybar_output *output) {
 	const char *method = NULL;
 	struct tray_binding *binding = NULL;
 	wl_list_for_each(binding, &sni->tray->bar->config->tray_bindings, link) {
@@ -368,8 +491,20 @@ static void handle_click(struct swaybar_sni *sni, int x, int y,
 		sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->path,
 				sni->interface, "Scroll", NULL, NULL, "is", delta*sign, orientation);
 	} else {
-		sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->path,
-				sni->interface, method, NULL, NULL, "ii", x, y);
+		if (strcmp(method, "ContextMenu") == 0 ) {
+			struct dbus_menu_data *dat = malloc(sizeof(struct dbus_menu_data));
+			dat->output = output;
+			dat->sni = sni;
+			dat->seat = seat;
+			int ret = sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->menu,
+				"com.canonical.dbusmenu", "GetLayout", sni_menu_layout_callback, dat, "iias", 0, -1, 0);
+			if (ret < 0) {
+				free(dat);
+			}
+		} else {
+			sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->path,
+					sni->interface, method, NULL, NULL, "ii", x, y);
+		}
 	}
 }
 
@@ -379,7 +514,7 @@ static int cmp_sni_id(const void *item, const void *cmp_to) {
 }
 
 static enum hotspot_event_handling icon_hotspot_callback(
-		struct swaybar_output *output, struct swaybar_hotspot *hotspot,
+		struct swaybar_output *output, struct swaybar_seat *seat, struct swaybar_hotspot *hotspot,
 		double x, double y, uint32_t button, void *data) {
 	sway_log(SWAY_DEBUG, "Clicked on %s", (char *)data);
 
@@ -396,7 +531,7 @@ static enum hotspot_event_handling icon_hotspot_callback(
 				(int) output->output_height - config->gaps.bottom - y);
 
 		sway_log(SWAY_DEBUG, "Guessing click position at (%d, %d)", global_x, global_y);
-		handle_click(sni, global_x, global_y, button, 1); // TODO get delta from event
+		handle_click(sni, seat, global_x, global_y, button, 1, output); // TODO get delta from event
 		return HOTSPOT_IGNORE;
 	} else {
 		sway_log(SWAY_DEBUG, "but it doesn't exist");

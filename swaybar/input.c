@@ -9,6 +9,10 @@
 #include "swaybar/config.h"
 #include "swaybar/input.h"
 #include "swaybar/ipc.h"
+#if HAVE_TRAY
+#include "swaybar/render.h"
+#include "swaybar/tray/item.h"
+#endif
 
 void free_hotspots(struct wl_list *list) {
 	struct swaybar_hotspot *hotspot, *tmp;
@@ -108,12 +112,19 @@ static void wl_pointer_enter(void *data, struct wl_pointer *wl_pointer,
 	struct swaybar_pointer *pointer = &seat->pointer;
 	pointer->serial = serial;
 	struct swaybar_output *output;
-	wl_list_for_each(output, &seat->bar->outputs, link) {
-		if (output->surface == surface) {
-			pointer->current = output;
-			break;
+#if HAVE_TRAY
+	pointer->current_is_popup = surface == seat->bar->popup.surface;
+	if (!pointer->current_is_popup) {
+#endif
+		wl_list_for_each(output, &seat->bar->outputs, link) {
+			if (output->surface == surface) {
+				pointer->current = output;
+				break;
+			}
 		}
+#if HAVE_TRAY
 	}
+#endif
 	update_cursor(seat);
 }
 
@@ -143,7 +154,7 @@ static bool check_bindings(struct swaybar *bar, uint32_t button,
 	return false;
 }
 
-static bool process_hotspots(struct swaybar_output *output,
+static bool process_hotspots(struct swaybar_output *output, struct swaybar_seat *seat,
 		double x, double y, uint32_t button) {
 	double px = x * output->scale;
 	double py = y * output->scale;
@@ -152,7 +163,7 @@ static bool process_hotspots(struct swaybar_output *output,
 		if (px >= hotspot->x && py >= hotspot->y
 				&& px < hotspot->x + hotspot->width
 				&& py < hotspot->y + hotspot->height) {
-			if (HOTSPOT_IGNORE == hotspot->callback(output, hotspot, x, y,
+			if (HOTSPOT_IGNORE == hotspot->callback(output, seat, hotspot, x, y,
 					button, hotspot->data)) {
 				return true;
 			}
@@ -162,23 +173,55 @@ static bool process_hotspots(struct swaybar_output *output,
 	return false;
 }
 
+#if HAVE_TRAY
+static void handle_popup_click(struct swaybar *bar, double x, double y) {
+	struct dbus_menu_item *item;
+	int counter = 5;
+	int yfixed = (int)y;
+	wl_array_for_each(item, bar->popup.menuitems) {
+		if (item->separator) {
+			counter += 5;
+			continue;
+		}
+		counter += bar->popup.item_height;
+		if (yfixed < counter) {
+			// click this!
+			handle_sni_menu_click(bar->popup.sni, item->id);
+			break;
+		}
+	}
+	destroy_popup(bar);
+}
+#endif
+
 static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
 	struct swaybar_seat *seat = data;
 	struct swaybar_pointer *pointer = &seat->pointer;
 	struct swaybar_output *output = pointer->current;
+#if HAVE_TRAY
+	if (pointer->current_is_popup) {
+		// popup click!
+		if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+			handle_popup_click(seat->bar, pointer->x,pointer->y);
+		}
+		return;
+	}
+	else if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat->bar->popup.popup) {
+		destroy_popup(seat->bar);
+	}
+#endif
 	if (!sway_assert(output, "button with no active output")) {
+		return;
+	}
+
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && process_hotspots(output, seat, pointer->x, pointer->y, button)) {
 		return;
 	}
 
 	if (check_bindings(seat->bar, button, state)) {
 		return;
 	}
-
-	if (state != WL_POINTER_BUTTON_STATE_PRESSED) {
-		return;
-	}
-	process_hotspots(output, pointer->x, pointer->y, button);
 }
 
 static void workspace_next(struct swaybar *bar, struct swaybar_output *output,
@@ -235,7 +278,7 @@ static void process_discrete_scroll(struct swaybar_seat *seat,
 		return;
 	}
 
-	if (process_hotspots(output, pointer->x, pointer->y, button)) {
+	if (process_hotspots(output, NULL, pointer->x, pointer->y, button)) {
 		return;
 	}
 
@@ -408,7 +451,7 @@ static void wl_touch_up(void *data, struct wl_touch *wl_touch,
 	}
 	if (time - slot->time < 500) {
 		// Tap, treat it like a pointer click
-		process_hotspots(slot->output, slot->x, slot->y, BTN_LEFT);
+		process_hotspots(slot->output, seat, slot->x, slot->y, BTN_LEFT);
 	}
 	slot->output = NULL;
 }

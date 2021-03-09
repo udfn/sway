@@ -16,6 +16,7 @@
 #include "swaybar/status_line.h"
 #if HAVE_TRAY
 #include "swaybar/tray/tray.h"
+#include "xdg-shell-client-protocol.h"
 #endif
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
@@ -160,7 +161,7 @@ static void render_sharp_line(cairo_t *cairo, uint32_t color,
 }
 
 static enum hotspot_event_handling block_hotspot_callback(
-		struct swaybar_output *output, struct swaybar_hotspot *hotspot,
+		struct swaybar_output *output, struct swaybar_seat *seat, struct swaybar_hotspot *hotspot,
 		double x, double y, uint32_t button, void *data) {
 	struct i3bar_block *block = data;
 	struct status_line *status = output->bar->status;
@@ -596,7 +597,7 @@ static uint32_t render_binding_mode_indicator(struct render_context *ctx,
 }
 
 static enum hotspot_event_handling workspace_hotspot_callback(
-		struct swaybar_output *output, struct swaybar_hotspot *hotspot,
+		struct swaybar_output *output, struct swaybar_seat *seat, struct swaybar_hotspot *hotspot,
 		double x, double y, uint32_t button, void *data) {
 	if (button != BTN_LEFT) {
 		return HOTSPOT_PROCESS;
@@ -747,6 +748,175 @@ static void output_frame_handle_done(void *data, struct wl_callback *callback,
 static const struct wl_callback_listener output_frame_listener = {
 	.done = output_frame_handle_done
 };
+#if HAVE_TRAY
+static void popup_render_to_cairo(cairo_t *cairo, struct swaybar_output *output, uint32_t *width, uint32_t *height) {
+	// This needs some fancy hover highlight effect!
+	cairo_scale(cairo, output->scale,output->scale);
+	int counter = 5;
+	struct dbus_menu_item *item;
+	cairo_set_source_u32(cairo, output->bar->config->colors.popup_background);
+	cairo_paint(cairo);
+	*width = 10;
+	struct swaybar_config *config = output->bar->config;
+	wl_array_for_each(item, output->bar->popup.menuitems) {
+		cairo_move_to(cairo, 5,counter);
+		if (item->separator) {
+			counter += 5;
+		} else {
+			int text_width, text_height;
+			get_text_size(cairo, config->font, &text_width, &text_height, NULL,
+				1, config->pango_markup, "%s", item->label);
+			if ((unsigned int)text_width + 10 > *width) {
+				*width = text_width + 10;
+				output->bar->popup.item_height = text_height + 3;
+			}
+			cairo_set_source_u32(cairo, config->colors.statusline);
+			pango_printf(cairo, config->font, 1, config->pango_markup,
+					"%s", item->label);
+			counter += text_height + 3;
+		}
+	}
+	*height = counter + 5;
+	// border
+	cairo_set_source_u32(cairo, output->bar->config->colors.separator);
+	cairo_set_line_width(cairo, 2);
+	cairo_rectangle(cairo, 0,0,*width,*height);
+	cairo_stroke(cairo);
+}
+
+void destroy_popup(struct swaybar *bar) {
+	struct dbus_menu_item *item;
+	wl_array_for_each(item, bar->popup.menuitems) {
+		free(item->label);
+	}
+	wl_array_release(bar->popup.menuitems);
+	free(bar->popup.menuitems);
+	if (bar->popup.popup) {
+		xdg_popup_destroy(bar->popup.popup);
+		xdg_surface_destroy(bar->popup.xsurface);
+	}
+	wl_surface_destroy(bar->popup.surface);
+	bar->popup.configured = false;
+	bar->popup.surface = NULL;
+	bar->popup.popup = NULL;
+	bar->popup.output = NULL;
+}
+void render_popup(struct swaybar_output *output);
+
+static void xdg_surface_configure(void *data,
+		struct xdg_surface *xdg_surface,
+		uint32_t serial) {
+	xdg_surface_ack_configure(xdg_surface, serial);
+	struct swaybar_output *output = data;
+	output->bar->popup.configured = true;
+	render_popup(output);
+}
+static struct xdg_surface_listener xdg_surfacelistener = {
+	xdg_surface_configure
+};
+
+static void xdg_popup_configure(void *data,
+		struct xdg_popup *xdg_popup,
+		int32_t x,
+		int32_t y,
+		int32_t width,
+		int32_t height) {
+	// whatever
+}
+
+static void xdg_popup_done(void *data,
+		struct xdg_popup *xdg_popup) {
+	struct swaybar *bar = data;
+	destroy_popup(bar);
+}
+
+static struct xdg_popup_listener xdg_popuplistener = {
+	xdg_popup_configure,
+	xdg_popup_done,
+	NULL
+};
+
+void render_popup(struct swaybar_output *output) {
+	struct swaybar *bar = output->bar;
+	cairo_surface_t *recorder = cairo_recording_surface_create(
+			CAIRO_CONTENT_COLOR_ALPHA, NULL);
+	cairo_t *cairo = cairo_create(recorder);
+	cairo_set_antialias(cairo, CAIRO_ANTIALIAS_BEST);
+	cairo_font_options_t *fo = cairo_font_options_create();
+	cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_FULL);
+	if (output->subpixel == WL_OUTPUT_SUBPIXEL_NONE) {
+		cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_GRAY);
+	} else {
+		cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_SUBPIXEL);
+		cairo_font_options_set_subpixel_order(fo,
+			to_cairo_subpixel_order(output->subpixel));
+	}
+	cairo_set_font_options(cairo, fo);
+	cairo_font_options_destroy(fo);
+	cairo_save(cairo);
+	cairo_set_operator(cairo, CAIRO_OPERATOR_CLEAR);
+	cairo_paint(cairo);
+	cairo_restore(cairo);
+	uint32_t height,width;
+	popup_render_to_cairo(cairo, output,&width,&height);
+	if (!output->bar->popup.popup) {
+		struct xdg_positioner *pos = xdg_wm_base_create_positioner(bar->xdg_wm);
+		if (bar->config->position & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) {
+			xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
+			xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_BOTTOM);
+		} else {
+			xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_TOP_RIGHT);
+			xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_TOP);
+		}
+		xdg_positioner_set_size(pos, width, height);
+		xdg_positioner_set_anchor_rect(pos, 0,0, output->width, output->height);
+		xdg_positioner_set_constraint_adjustment(pos, XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X|XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+		bar->popup.popup = xdg_surface_get_popup(bar->popup.xsurface, NULL, pos);
+		xdg_surface_add_listener(bar->popup.xsurface, &xdg_surfacelistener, output);
+		xdg_popup_add_listener(bar->popup.popup, &xdg_popuplistener, bar);
+		xdg_popup_grab(bar->popup.popup, bar->popup.seat->wl_seat, bar->popup.seat->pointer.serial);
+		xdg_positioner_destroy(pos);
+		zwlr_layer_surface_v1_get_popup(output->layer_surface, bar->popup.popup);
+		wl_surface_commit(output->bar->popup.surface);
+		cairo_surface_destroy(recorder);
+		cairo_destroy(cairo);
+		return;
+	}
+	bar->popup.height = height;
+	bar->popup.width = width;
+	if (height > 0 && bar->popup.configured) {
+		// Replay recording into shm and send it off
+		bar->popup.current_buffer = get_next_buffer(bar->shm,
+				bar->popup.buffers,
+				bar->popup.width * output->scale,
+				bar->popup.height * output->scale);
+		if (!bar->popup.current_buffer) {
+			cairo_surface_destroy(recorder);
+			cairo_destroy(cairo);
+			return;
+		}
+		cairo_t *shm = output->bar->popup.current_buffer->cairo;
+
+		cairo_save(shm);
+		cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+		cairo_paint(shm);
+		cairo_restore(shm);
+
+		cairo_set_source_surface(shm, recorder, 0.0, 0.0);
+		cairo_paint(shm);
+
+		wl_surface_set_buffer_scale(output->bar->popup.surface, output->scale);
+		wl_surface_attach(output->bar->popup.surface,
+				output->bar->popup.current_buffer->buffer, 0, 0);
+		wl_surface_damage(output->surface, 0, 0,
+				output->bar->popup.width, output->bar->popup.height);
+
+		wl_surface_commit(bar->popup.surface);
+	}
+	cairo_surface_destroy(recorder);
+	cairo_destroy(cairo);
+}
+#endif
 
 void render_frame(struct swaybar_output *output) {
 	assert(output->surface != NULL);
