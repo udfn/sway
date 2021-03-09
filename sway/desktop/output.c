@@ -605,13 +605,14 @@ static int output_repaint_timer_handler(void *data) {
 		fullscreen_con = workspace->current.fullscreen;
 	}
 
-	if (fullscreen_con && fullscreen_con->view) {
+	if (fullscreen_con && fullscreen_con->view &&
+			fullscreen_con->fullscreen_scan_out_capable) {
 		// Try to scan-out the fullscreen view
 		static bool last_scanned_out = false;
 		bool scanned_out =
 			scan_out_fullscreen_view(output, fullscreen_con->view,
 				fullscreen_con->fullscreen_present_mode);
-
+		fullscreen_con->fullscreen_scan_out_capable = scanned_out;
 		if (scanned_out && !last_scanned_out) {
 			sway_log(SWAY_DEBUG, "Scanning out fullscreen view on %s",
 				output->wlr_output->name);

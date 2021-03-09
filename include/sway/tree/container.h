@@ -118,6 +118,8 @@ struct sway_container {
 
 	// The present mode used when this container is fullscreen'd
 	enum wlr_output_present_mode fullscreen_present_mode;
+	// Is this container is capable of direct scanout when fullscreen'd?
+	bool fullscreen_scan_out_capable;
 	// Should this container be rendered on top of fullscreen views if floating?
 	bool always_on_top;
 

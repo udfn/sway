@@ -1072,6 +1072,7 @@ static void container_fullscreen_workspace(struct sway_container *con) {
 		}
 	}
 
+	con->fullscreen_scan_out_capable = true;
 	container_end_mouse_operation(con);
 	ipc_event_window(con, "fullscreen_mode");
 }
