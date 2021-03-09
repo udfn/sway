@@ -718,6 +718,51 @@ static void floating_natural_resize(struct sway_container *con) {
 	}
 }
 
+// Evil copy pasted code
+void container_floating_resize(struct sway_container *con) {
+	struct sway_workspace *ws = con->pending.workspace;
+	if (!ws) {
+		// On scratchpad, just resize
+		floating_natural_resize(con);
+		return;
+	}
+
+	struct wlr_box *ob = wlr_output_layout_get_box(root->output_layout,
+			ws->output->wlr_output);
+	if (!ob) {
+		// On NOOP output. Will be called again when moved to an output
+		con->pending.x = 0;
+		con->pending.y = 0;
+		con->pending.width = 0;
+		con->pending.height = 0;
+		return;
+	}
+
+	floating_natural_resize(con);
+	if (!con->view) {
+		int xslide = con->pending.width + con->pending.x - (ob->width + ob->x);
+		int yslide = con->pending.height + con->pending.y - (ob->height + ob->y);
+		if (xslide > 0)
+			con->pending.x -= xslide;
+		if (yslide > 0)
+			con->pending.y -= yslide;
+	} else {
+		int xslide = con->pending.content_width + con->pending.content_x - (ob->width + ob->x);
+		int yslide = con->pending.content_height + con->pending.content_y - (ob->height + ob->y);
+		if (xslide > 0)
+			con->pending.content_x -= xslide;
+		if (yslide > 0)
+			con->pending.content_y -= yslide;
+
+		// If the view's border is B_NONE then these properties are ignored.
+		con->pending.border_top = con->pending.border_bottom = true;
+		con->pending.border_left = con->pending.border_right = true;
+
+		container_set_geometry_from_content(con);
+	}
+}
+
+
 void container_floating_resize_and_center(struct sway_container *con) {
 	struct sway_workspace *ws = con->pending.workspace;
 	if (!ws) {

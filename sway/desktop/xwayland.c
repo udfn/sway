@@ -526,18 +526,15 @@ static void handle_request_configure(struct wl_listener *listener, void *data) {
 		// Respect minimum and maximum sizes
 		view->natural_width = ev->width;
 		view->natural_height = ev->height;
-		container_floating_resize_and_center(view->container);
-
-		configure(view, view->container->pending.content_x,
-				view->container->pending.content_y,
-				view->container->pending.content_width,
-				view->container->pending.content_height);
-		node_set_dirty(&view->container->node);
-	} else {
+		// Only resize if the size changed
+		if (view->geometry.height != ev->height || view->geometry.width != ev->width) {
+			container_floating_resize(view->container);
+		}
 		configure(view, view->container->current.content_x,
 				view->container->current.content_y,
 				view->container->current.content_width,
 				view->container->current.content_height);
+		node_set_dirty(&view->container->node);
 	}
 }
 
