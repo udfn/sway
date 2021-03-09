@@ -35,6 +35,7 @@ struct sway_container *container_create(struct sway_view *view) {
 	c->view = view;
 	c->alpha = 1.0f;
 	c->always_on_top = false;
+	c->fullscreen_present_mode = WLR_OUTPUT_PRESENT_MODE_NORMAL;
 
 	if (!view) {
 		c->pending.children = create_list();
@@ -86,7 +87,23 @@ void container_destroy(struct sway_container *con) {
 	free(con);
 }
 
+static void container_unset_fullscreen_immediate(struct sway_container *con) {
+	con->fullscreen_present_mode = WLR_OUTPUT_PRESENT_MODE_NORMAL;
+	// Can an immediate mode container even be on multiple outputs? Hmmm.
+	for (int i = 0; i < con->outputs->length; i++) {
+		struct sway_output *output = (struct sway_output*)con->outputs->items[i];
+		if (output->fullscreen_immediate_surface) {
+			output->fullscreen_immediate_surface->immediate_commit_output = NULL;
+		}
+		output->fullscreen_immediate_surface = NULL;
+		output->wlr_output->present_mode = WLR_OUTPUT_PRESENT_MODE_NORMAL;
+	}
+}
+
 void container_begin_destroy(struct sway_container *con) {
+	if (con->current.fullscreen_mode != FULLSCREEN_NONE && con->fullscreen_present_mode != WLR_OUTPUT_PRESENT_MODE_NORMAL) {
+		container_unset_fullscreen_immediate(con);
+	}
 	if (con->view) {
 		ipc_event_window(con, "close");
 	}

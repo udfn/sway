@@ -116,6 +116,8 @@ struct sway_container {
 
 	float alpha;
 
+	// The present mode used when this container is fullscreen'd
+	enum wlr_output_present_mode fullscreen_present_mode;
 	// Should this container be rendered on top of fullscreen views if floating?
 	bool always_on_top;
 

@@ -1060,6 +1060,10 @@ void output_render(struct sway_output *output, struct timespec *when,
 		}
 
 		if (fullscreen_con->view) {
+			if (fullscreen_con->fullscreen_present_mode) {
+				set_output_immediate_surface(output, fullscreen_con->view->surface,
+					fullscreen_con->fullscreen_present_mode);
+			}
 			if (!wl_list_empty(&fullscreen_con->view->saved_buffers)) {
 				render_saved_view(fullscreen_con->view, output, damage, 1.0f);
 			} else if (fullscreen_con->view->surface) {
@@ -1067,6 +1071,7 @@ void output_render(struct sway_output *output, struct timespec *when,
 						output, damage, 1.0f);
 			}
 		} else {
+			set_output_immediate_surface(output, NULL, WLR_OUTPUT_PRESENT_MODE_NORMAL);
 			render_container(output, damage, fullscreen_con,
 					fullscreen_con->current.focused);
 		}
@@ -1083,6 +1088,11 @@ void output_render(struct sway_output *output, struct timespec *when,
 		render_unmanaged(output, damage, &root->xwayland_unmanaged);
 #endif
 	} else {
+		if (output->fullscreen_immediate_surface) {
+			output->fullscreen_immediate_surface->immediate_commit_output = NULL;
+			output->fullscreen_immediate_surface = NULL;
+			wlr_output->present_mode = WLR_OUTPUT_PRESENT_MODE_NORMAL;
+		}
 		float clear_color[] = {0.25f, 0.25f, 0.25f, 1.0f};
 
 		int nrects;

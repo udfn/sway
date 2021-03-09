@@ -51,6 +51,7 @@ struct sway_output {
 	struct {
 		struct wl_signal destroy;
 	} events;
+	struct wlr_surface *fullscreen_immediate_surface;
 
 	struct timespec last_presentation;
 	uint32_t refresh_nsec;
@@ -102,6 +103,9 @@ void output_enable(struct sway_output *output);
 void output_disable(struct sway_output *output);
 
 bool output_has_opaque_overlay_layer_surface(struct sway_output *output);
+
+void set_output_immediate_surface(struct sway_output *output, struct wlr_surface *surface,
+		enum wlr_output_present_mode mode);
 
 struct sway_workspace *output_get_active_workspace(struct sway_output *output);
 

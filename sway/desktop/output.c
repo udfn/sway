@@ -496,8 +496,27 @@ static void count_surface_iterator(struct sway_output *output, struct sway_view 
 	(*n)++;
 }
 
+void set_output_immediate_surface(struct sway_output *output, struct wlr_surface *surface,
+		enum wlr_output_present_mode mode) {
+	if (surface) {
+		output->wlr_output->present_mode = mode;
+		if (output->fullscreen_immediate_surface != surface) {
+			if (output->fullscreen_immediate_surface != NULL) {
+				output->fullscreen_immediate_surface->immediate_commit_output = NULL;
+			}
+			output->fullscreen_immediate_surface = surface;
+			surface->immediate_commit_output = output->damage;
+		}
+	}
+	else if (output->fullscreen_immediate_surface) {
+		output->wlr_output->present_mode = WLR_OUTPUT_PRESENT_MODE_NORMAL;
+		output->fullscreen_immediate_surface->immediate_commit_output = NULL;
+		output->fullscreen_immediate_surface = NULL;
+	}
+}
+
 static bool scan_out_fullscreen_view(struct sway_output *output,
-		struct sway_view *view) {
+		struct sway_view *view, enum wlr_output_present_mode mode) {
 	struct wlr_output *wlr_output = output->wlr_output;
 	struct sway_workspace *workspace = output->current.active_workspace;
 	if (!sway_assert(workspace, "Expected an active workspace")) {
@@ -558,6 +577,13 @@ static bool scan_out_fullscreen_view(struct sway_output *output,
 	wlr_presentation_surface_sampled_on_output(server.presentation, surface,
 		wlr_output);
 
+	if (mode) {
+		set_output_immediate_surface(output, surface, mode);
+	}
+	else {
+		set_output_immediate_surface(output, NULL, mode);
+	}
+
 	return wlr_output_commit(wlr_output);
 }
 
@@ -583,7 +609,8 @@ static int output_repaint_timer_handler(void *data) {
 		// Try to scan-out the fullscreen view
 		static bool last_scanned_out = false;
 		bool scanned_out =
-			scan_out_fullscreen_view(output, fullscreen_con->view);
+			scan_out_fullscreen_view(output, fullscreen_con->view,
+				fullscreen_con->fullscreen_present_mode);
 
 		if (scanned_out && !last_scanned_out) {
 			sway_log(SWAY_DEBUG, "Scanning out fullscreen view on %s",
@@ -625,7 +652,7 @@ static int output_repaint_timer_handler(void *data) {
 static void damage_handle_frame(struct wl_listener *listener, void *user_data) {
 	struct sway_output *output =
 		wl_container_of(listener, output, damage_frame);
-	if (!output->enabled || !output->wlr_output->enabled) {
+	if (!output->enabled || !output->wlr_output->enabled || output->wlr_output->frame_pending) {
 		return;
 	}
 
@@ -633,7 +660,8 @@ static void damage_handle_frame(struct wl_listener *listener, void *user_data) {
 	// delaying both output rendering and surface frame callbacks.
 	int msec_until_refresh = 0;
 
-	if (output->max_render_time != 0) {
+	if (output->max_render_time != 0 &&
+			output->wlr_output->present_mode == WLR_OUTPUT_PRESENT_MODE_NORMAL) {
 		struct timespec now;
 		clockid_t presentation_clock
 			= wlr_backend_get_presentation_clock(server.backend);
