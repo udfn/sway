@@ -81,6 +81,12 @@ static void popup_unconstrain(struct sway_xdg_popup *popup) {
 		.height = output->height,
 	};
 
+	// Some (poorly made?) programs don't seem to set any constraint adjustment..
+	// So force slide to prevent popups going offscreen.
+	if (wlr_popup->positioner.constraint_adjustment == XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_NONE) {
+		wlr_popup->positioner.constraint_adjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y;
+	}
+
 	wlr_xdg_popup_unconstrain_from_box(wlr_popup, &output_toplevel_sx_box);
 }
 
