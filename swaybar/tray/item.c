@@ -120,7 +120,7 @@ static int get_property_callback(sd_bus_message *msg, void *data,
 
 	int ret;
 	if (sd_bus_message_is_method_error(msg, NULL)) {
-		sway_log(SWAY_ERROR, "%s %s: %s", sni->watcher_id, prop,
+		sway_log(SWAY_DEBUG, "%s %s: %s", sni->watcher_id, prop,
 				sd_bus_message_get_error(msg)->message);
 		ret = sd_bus_message_get_errno(msg);
 		goto cleanup;
